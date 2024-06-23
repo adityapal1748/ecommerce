@@ -1,28 +1,34 @@
-const { createStripePaymentIntent, confirmStripePayment, savePayment } = require('../services/paymentService');
+const { createOrder } = require('../services/orderService');
+const { createStripePaymentIntent, savePayment, confirmStripePayment } = require('../services/paymentService');
+const { JoiSchema } = require('../utils/joiValidation');
 const { sendSuccessResponse, sendErrorResponse } = require('../utils/responseHandler');
 
 const createPaymentIntent = async (req, res) => {
-  const { userId, orderId, amount, currency } = req.body;
-  
-  try {
-    if(!userId || !orderId || !amount|| !currency ){
-        console.log("error")
-    }
-    const paymentIntent = await createStripePaymentIntent(amount, currency);
-    console.log("paymentIntent")
-    const payment = await savePayment(userId, orderId, 'stripe', paymentIntent);
-    console.log(payment)
+  const createPaymentIntentSchema = Joi.object({
+    userId: JoiSchema.stringValidation,
+    orderId: JoiSchema.stringValidation,
+    amount: JoiSchema.numberValidation,
+    currency: JoiSchema.stringValidation
+  });
+  const { error, value } = createPaymentIntentSchema.validate(req.body);
+  if (error) {
+    return sendErrorResponse(res, error.details[0].message);
+  }
 
-    sendSuccessResponse(res, payment, 'Payment intent created successfully.');
+  const { userId, orderId, amount, currency } = value;
+  try {
+    const paymentIntent = await createStripePaymentIntent(amount, currency);
+    const payment = await savePayment(userId, orderId, 'stripe', paymentIntent);
+
+    sendSuccessResponse(res, {payment});
   } catch (error) {
-    console.log("HERE")
     sendErrorResponse(res, error.message);
   }
 };
 
 const confirmPayment = async (req, res) => {
-  const { paymentIntentId } = req.body;
-  
+  const { paymentIntentId, userId, products, amount } = req.body;
+
   try {
     const confirmedPayment = await confirmStripePayment(paymentIntentId);
     // Update the payment status in the database
@@ -31,11 +37,19 @@ const confirmPayment = async (req, res) => {
       { status: confirmedPayment.status },
       { new: true }
     );
-    sendSuccessResponse(res, payment, 'Payment confirmed successfully.');
+
+    if (payment.status === 'succeeded') {
+      // Create the order after successful payment
+      const order = await createOrder(userId, products, amount);
+      sendSuccessResponse(res, { payment, order }, 'Payment confirmed and order created successfully.');
+    } else {
+      sendErrorResponse(res, 'Payment not successful.');
+    }
   } catch (error) {
     sendErrorResponse(res, error.message);
   }
 };
+
 
 module.exports = {
   createPaymentIntent,

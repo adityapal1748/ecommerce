@@ -1,5 +1,6 @@
 const axios = require('axios');
 const Payment = require('../models/payment.model');
+const { default: mongoose } = require('mongoose');
 
 // Load the environment variables from .env file
 require('dotenv').config();
@@ -11,12 +12,17 @@ const stripeHeaders = {
 };
 
 const createStripePaymentIntent = async (amount, currency) => {
-  const response = await axios.post(
-    'https://api.stripe.com/v1/payment_intents',
-    new URLSearchParams({ amount, currency }).toString(),
-    { headers: stripeHeaders }
-  );
-  return response.data;
+  try{
+    const response = await axios.post(
+      'https://api.stripe.com/v1/payment_intents',
+      new URLSearchParams({ amount, currency }).toString(),
+      { headers: stripeHeaders }
+    );
+    return response.data;
+
+  }catch(err){
+    console.log(err)
+  }
 };
 
 const confirmStripePayment = async (paymentIntentId) => {
@@ -26,7 +32,7 @@ const confirmStripePayment = async (paymentIntentId) => {
     { headers: stripeHeaders }
   );
   return response.data;
-};
+}; 
 
 const savePayment = async (userId, orderId, paymentProvider, paymentData) => {
   const payment = new Payment({
